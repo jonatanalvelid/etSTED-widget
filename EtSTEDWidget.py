@@ -38,6 +38,8 @@ class EtSTEDWidget(Widget):
         self.analysisPipelinePar.addItems(self.analysisPipelines)
         self.analysisPipelinePar.setCurrentIndex(0)
         
+        self.__paramsExclude = ['img', 'bkg', 'binary_mask', 'exinfo', 'testmode']
+        
         #TODO: add way to save current coordinate transform as a file that can be loaded from the list
         # add all available coordinate transformations to the dropdown list
         self.transformPipelines = list()
@@ -49,6 +51,24 @@ class EtSTEDWidget(Widget):
         
         self.transformPipelinePar.addItems(self.transformPipelines)
         self.transformPipelinePar.setCurrentIndex(0)
+
+        # add all forAcquisition detectors in a dropdown list, for being the fastImgDetector (widefield)
+        self.fastImgDetectors = list()
+        self.fastImgDetectorsPar = QtGui.QComboBox()
+        self.fastImgDetectorsPar_label = QtGui.QLabel('Fast detector')
+        self.fastImgDetectorsPar_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
+        # add all lasers in a dropdown list, for being the fastImgLaser (widefield)
+        self.fastImgLasers = list()
+        self.fastImgLasersPar = QtGui.QComboBox()
+        self.fastImgLasersPar_label = QtGui.QLabel('Fast laser')
+        self.fastImgLasersPar_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
+        # add all experiment modes a dropdown list
+        self.experimentModes = ['Experiment','Test:Visualize','Test:Validate']
+        self.experimentModesPar = QtGui.QComboBox()
+        self.experimentModesPar_label = QtGui.QLabel('Experiment mode')
+        self.experimentModesPar_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignCenter)
+        self.experimentModesPar.addItems(self.experimentModes)
+        self.experimentModesPar.setCurrentIndex(0)
 
         self.param_names = list()
         self.param_edits = list()
@@ -66,7 +86,6 @@ class EtSTEDWidget(Widget):
         self.endlessScanCheck = QtGui.QCheckBox('Endless')
         self.visualizeCheck = QtGui.QCheckBox('Visualize')
         self.validateCheck = QtGui.QCheckBox('Validate')
-        self.timelapseScanCheck = QtGui.QCheckBox('Timelapse scan')
 
         self.bin_thresh_label = QtGui.QLabel('Bin. threshold')
         self.bin_thresh_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
@@ -74,9 +93,6 @@ class EtSTEDWidget(Widget):
         self.bin_smooth_label = QtGui.QLabel('Bin. smooth (px)')
         self.bin_smooth_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
         self.bin_smooth_edit = QtGui.QLineEdit(str(2))
-        self.timelapse_reps_label = QtGui.QLabel('Timelapse frames')
-        self.timelapse_reps_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
-        self.timelapse_reps_edit = QtGui.QLineEdit(str(1))
         self.throw_delay_label = QtGui.QLabel('Throw delay (us)')
         self.throw_delay_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
         self.throw_delay_edit = QtGui.QLineEdit(str(30))
@@ -92,44 +108,58 @@ class EtSTEDWidget(Widget):
 
         self.grid = QtGui.QGridLayout()
         self.setLayout(self.grid)
-    
 
         # initialize widget controls
         currentRow = 0
 
-        # add general buttons to grid
         self.grid.addWidget(self.initiateButton, currentRow, 0)
         self.grid.addWidget(self.endlessScanCheck, currentRow, 1)
-        self.grid.addWidget(self.visualizeCheck, currentRow, 2)
-        self.grid.addWidget(self.validateCheck, currentRow, 3)
-        self.grid.addWidget(self.loadScanParametersButton, currentRow, 4)
-        self.grid.addWidget(self.recordBinaryMaskButton, currentRow, 5)
-        self.grid.addWidget(self.setBusyFalseButton, currentRow, 6)
+        self.grid.addWidget(self.experimentModesPar_label, currentRow, 2)
+        self.grid.addWidget(self.experimentModesPar, currentRow, 3)
         
-        currentRow += 2
+        currentRow += 1
 
-        # add image and pixel size parameters to grid
-        # add param name and param to grid
-        self.grid.addWidget(self.throw_delay_label, currentRow-1, 1)
-        self.grid.addWidget(self.timelapseScanCheck, currentRow-1, 2)
-        self.grid.addWidget(self.timelapse_reps_label, currentRow-1, 3)
-        self.grid.addWidget(self.bin_thresh_label, currentRow-1, 4)
-        self.grid.addWidget(self.bin_smooth_label, currentRow-1, 5)
+        self.grid.addWidget(self.throw_delay_label, currentRow, 0)
         self.grid.addWidget(self.throw_delay_edit, currentRow, 1)
-        self.grid.addWidget(self.timelapse_reps_edit, currentRow, 3)
-        self.grid.addWidget(self.bin_thresh_edit, currentRow, 4)
-        self.grid.addWidget(self.bin_smooth_edit, currentRow, 5)
+        self.grid.addWidget(self.bin_thresh_label, currentRow, 2)
+        self.grid.addWidget(self.bin_thresh_edit, currentRow, 3)
 
         currentRow += 1
 
         self.grid.addWidget(self.loadPipelineButton, currentRow, 0)
         self.grid.addWidget(self.analysisPipelinePar, currentRow, 1)
+        self.grid.addWidget(self.bin_smooth_label, currentRow, 2)
+        self.grid.addWidget(self.bin_smooth_edit, currentRow, 3)
+
+        currentRow += 1
+
         self.grid.addWidget(self.transformPipelinePar, currentRow, 2)
         self.grid.addWidget(self.coordTransfCalibButton, currentRow, 3)
-        self.grid.addWidget(self.setUpdatePeriodButton, currentRow, 5)
-        self.grid.addWidget(self.update_period_label, currentRow+1, 4)
-        self.grid.addWidget(self.update_period_edit, currentRow+1, 5)
 
+        currentRow += 1
+
+        self.grid.addWidget(self.update_period_label, currentRow, 2)
+        self.grid.addWidget(self.update_period_edit, currentRow, 3)
+
+        currentRow += 1
+
+        self.grid.addWidget(self.setUpdatePeriodButton, currentRow, 2)
+        self.grid.addWidget(self.recordBinaryMaskButton, currentRow, 3)
+
+        currentRow +=1
+
+        self.grid.addWidget(self.fastImgDetectorsPar_label, currentRow, 2)
+        self.grid.addWidget(self.fastImgDetectorsPar, currentRow, 3)
+
+        currentRow += 1
+
+        self.grid.addWidget(self.fastImgLasersPar_label, currentRow, 2)
+        self.grid.addWidget(self.fastImgLasersPar, currentRow, 3)
+
+        currentRow +=1 
+
+        self.grid.addWidget(self.loadScanParametersButton, currentRow, 2)
+        self.grid.addWidget(self.setBusyFalseButton, currentRow, 3)
 
     def initParamFields(self, parameters: dict):
         """ Initialized etSTED widget parameter fields. """
@@ -158,6 +188,18 @@ class EtSTEDWidget(Widget):
                 self.param_edits.append(param_edit)
 
                 currentRow += 1
+
+    def setFastDetectorList(self, detectorNames):
+        """ Set combobox with available detectors to use for the fast method. """
+        self.fastImgDetectors = detectorNames
+        self.fastImgDetectorsPar.addItems(self.fastImgDetectors)
+        self.fastImgDetectorsPar.setCurrentIndex(0)
+
+    def setFastLaserList(self, laserNames):
+        """ Set combobox with available lasers to use for the fast method. """
+        self.fastImgLasers = laserNames
+        self.fastImgLasersPar.addItems(self.fastImgLasers)
+        self.fastImgLasersPar.setCurrentIndex(0)
 
     def launchHelpWidget(self, widget, init=True):
         """ Launch the help widget. """
