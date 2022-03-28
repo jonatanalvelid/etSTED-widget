@@ -1,6 +1,6 @@
 from EtSTEDController import EtSTEDController
 from EtSTEDWidget import EtSTEDWidget
-from basecontrollers import ImConWidgetControllerFactory
+from mockcamera import MockCamera
 from qtpy import QtWidgets
 import sys
 
@@ -8,9 +8,9 @@ setupInfo = None
 options = None
 
 etSTEDapp = QtWidgets.QApplication(sys.argv)
+camera = MockCamera()
 widget = EtSTEDWidget(options)
-controllerfactory = ImConWidgetControllerFactory(setupInfo)
-controller = EtSTEDController(setupInfo, widget, controllerfactory)
+controller = EtSTEDController(camera, setupInfo, widget)
 
 widget.show()
 sys.exit(etSTEDapp.exec_())

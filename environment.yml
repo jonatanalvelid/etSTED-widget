@@ -1,0 +1,15 @@
+name: etSTED-widget
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - numpy
+  - h5py
+  - scipy
+  - napari
+  - pyqtgraph
+  - vispy
+  - pip
+  - pip:
+    - PyQt5

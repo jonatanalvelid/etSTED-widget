@@ -1,18 +1,22 @@
 import os
-import napari
-from napari.utils.translations import trans
 
 import pyqtgraph as pg
-#from pyqtgraph.Qt import QtGui, QtCore
-from pyqtgraph.Qt import QtCore
-from qtpy import QtGui, QtWidgets
+import numpy as np
+import napari
 
-from basewidgets import Widget
+from napari.utils.translations import trans
+from vispy.color import Color
+from vispy.scene.visuals import Markers
+from vispy.visuals.transforms import STTransform
+from pyqtgraph.Qt import QtCore
+from PyQt5 import QtGui, QtWidgets
+
+#from basewidgets import Widget
 
 _etstedDir = os.path.join('C:\\etSTED', 'imcontrol_etsted')
 
 
-class EtSTEDWidget(Widget):
+class EtSTEDWidget(QtWidgets.QWidget):
     """ Widget for controlling the etSTED implementation. """
 
     def __init__(self, *args, **kwargs):
@@ -40,7 +44,6 @@ class EtSTEDWidget(Widget):
         
         self.__paramsExclude = ['img', 'bkg', 'binary_mask', 'exinfo', 'testmode']
         
-        #TODO: add way to save current coordinate transform as a file that can be loaded from the list
         # add all available coordinate transformations to the dropdown list
         self.transformPipelines = list()
         self.transformPipelinePar = QtGui.QComboBox()
@@ -62,8 +65,8 @@ class EtSTEDWidget(Widget):
         self.fastImgLasersPar = QtGui.QComboBox()
         self.fastImgLasersPar_label = QtGui.QLabel('Fast laser')
         self.fastImgLasersPar_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
-        # add all experiment modes a dropdown list
-        self.experimentModes = ['Experiment','Test:Visualize','Test:Validate']
+        # add all experiment modes in a dropdown list
+        self.experimentModes = ['Experiment','TestVisualize','TestValidate']
         self.experimentModesPar = QtGui.QComboBox()
         self.experimentModesPar_label = QtGui.QLabel('Experiment mode')
         self.experimentModesPar_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignCenter)
@@ -73,19 +76,16 @@ class EtSTEDWidget(Widget):
         self.param_names = list()
         self.param_edits = list()
 
-        self.initiateButton = BetterPushButton('Initiate etSTED')
+        self.initiateButton = QtWidgets.QPushButton('Initiate etSTED')
         self.initiateButton.setSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Expanding)
-        self.loadPipelineButton = BetterPushButton('Load pipeline')
+        self.loadPipelineButton = QtWidgets.QPushButton('Load pipeline')
         
-        self.coordTransfCalibButton = BetterPushButton('Transform calibration')
-        self.recordBinaryMaskButton = BetterPushButton('Record binary mask')
-        self.loadScanParametersButton = BetterPushButton('Load scan parameters')
-        self.setUpdatePeriodButton = BetterPushButton('Set update period')
-        self.setBusyFalseButton = BetterPushButton('Unlock softlock')
+        self.coordTransfCalibButton = QtWidgets.QPushButton('Transform calibration')
+        self.recordBinaryMaskButton = QtWidgets.QPushButton('Record binary mask')
+        self.loadScanParametersButton = QtWidgets.QPushButton('Load scan parameters')
+        self.setBusyFalseButton = QtWidgets.QPushButton('Unlock softlock')
 
         self.endlessScanCheck = QtGui.QCheckBox('Endless')
-        self.visualizeCheck = QtGui.QCheckBox('Visualize')
-        self.validateCheck = QtGui.QCheckBox('Validate')
 
         self.bin_thresh_label = QtGui.QLabel('Bin. threshold')
         self.bin_thresh_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
@@ -93,12 +93,12 @@ class EtSTEDWidget(Widget):
         self.bin_smooth_label = QtGui.QLabel('Bin. smooth (px)')
         self.bin_smooth_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
         self.bin_smooth_edit = QtGui.QLineEdit(str(2))
-        self.throw_delay_label = QtGui.QLabel('Throw delay (us)')
-        self.throw_delay_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
-        self.throw_delay_edit = QtGui.QLineEdit(str(30))
-        self.update_period_label = QtGui.QLabel('Update period (ms)')
-        self.update_period_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignBottom)
-        self.update_period_edit = QtGui.QLineEdit(str(100))
+
+        # create imageviewer
+        self.imageViewer = EmbeddedNapari()
+        # create scatter plot for plotting the detected coordinates 
+        self.eventScatterPlot = VispyScatterVisual(color='red', symbol='x')
+        self.eventScatterPlot.hide()
 
         # help widget for coordinate transform
         self.coordTransformWidget = CoordTransformWidget(*args, **kwargs)
@@ -112,54 +112,45 @@ class EtSTEDWidget(Widget):
         # initialize widget controls
         currentRow = 0
 
-        self.grid.addWidget(self.initiateButton, currentRow, 0)
-        self.grid.addWidget(self.endlessScanCheck, currentRow, 1)
-        self.grid.addWidget(self.experimentModesPar_label, currentRow, 2)
-        self.grid.addWidget(self.experimentModesPar, currentRow, 3)
+        self.grid.addWidget(self.imageViewer.get_widget(), currentRow, 0, 7, 1)
+
+        self.grid.addWidget(self.initiateButton, currentRow, 1)
+        self.grid.addWidget(self.endlessScanCheck, currentRow, 2)
+        self.grid.addWidget(self.experimentModesPar_label, currentRow, 3)
+        self.grid.addWidget(self.experimentModesPar, currentRow, 4)
         
         currentRow += 1
 
-        self.grid.addWidget(self.throw_delay_label, currentRow, 0)
-        self.grid.addWidget(self.throw_delay_edit, currentRow, 1)
-        self.grid.addWidget(self.bin_thresh_label, currentRow, 2)
-        self.grid.addWidget(self.bin_thresh_edit, currentRow, 3)
+        self.grid.addWidget(self.bin_smooth_label, currentRow, 1)
+        self.grid.addWidget(self.bin_smooth_edit, currentRow, 2)
+        self.grid.addWidget(self.bin_thresh_label, currentRow, 3)
+        self.grid.addWidget(self.bin_thresh_edit, currentRow, 4)
 
         currentRow += 1
 
-        self.grid.addWidget(self.loadPipelineButton, currentRow, 0)
-        self.grid.addWidget(self.analysisPipelinePar, currentRow, 1)
-        self.grid.addWidget(self.bin_smooth_label, currentRow, 2)
-        self.grid.addWidget(self.bin_smooth_edit, currentRow, 3)
+        self.grid.addWidget(self.loadPipelineButton, currentRow, 1)
+        self.grid.addWidget(self.analysisPipelinePar, currentRow, 2)
+        self.grid.addWidget(self.transformPipelinePar, currentRow, 3)
+        self.grid.addWidget(self.coordTransfCalibButton, currentRow, 4)
 
         currentRow += 1
 
-        self.grid.addWidget(self.transformPipelinePar, currentRow, 2)
-        self.grid.addWidget(self.coordTransfCalibButton, currentRow, 3)
-
-        currentRow += 1
-
-        self.grid.addWidget(self.update_period_label, currentRow, 2)
-        self.grid.addWidget(self.update_period_edit, currentRow, 3)
-
-        currentRow += 1
-
-        self.grid.addWidget(self.setUpdatePeriodButton, currentRow, 2)
-        self.grid.addWidget(self.recordBinaryMaskButton, currentRow, 3)
+        self.grid.addWidget(self.recordBinaryMaskButton, currentRow, 4)
 
         currentRow +=1
 
-        self.grid.addWidget(self.fastImgDetectorsPar_label, currentRow, 2)
-        self.grid.addWidget(self.fastImgDetectorsPar, currentRow, 3)
+        self.grid.addWidget(self.fastImgDetectorsPar_label, currentRow, 3)
+        self.grid.addWidget(self.fastImgDetectorsPar, currentRow, 4)
 
         currentRow += 1
 
-        self.grid.addWidget(self.fastImgLasersPar_label, currentRow, 2)
-        self.grid.addWidget(self.fastImgLasersPar, currentRow, 3)
+        self.grid.addWidget(self.fastImgLasersPar_label, currentRow, 3)
+        self.grid.addWidget(self.fastImgLasersPar, currentRow, 4)
 
         currentRow +=1 
 
-        self.grid.addWidget(self.loadScanParametersButton, currentRow, 2)
-        self.grid.addWidget(self.setBusyFalseButton, currentRow, 3)
+        self.grid.addWidget(self.loadScanParametersButton, currentRow, 3)
+        self.grid.addWidget(self.setBusyFalseButton, currentRow, 4)
 
     def initParamFields(self, parameters: dict):
         """ Initialized etSTED widget parameter fields. """
@@ -170,19 +161,19 @@ class EtSTEDWidget(Widget):
             self.grid.removeWidget(param)
 
         # initiate parameter fields for all the parameters in the pipeline chosen
-        currentRow = 4
+        currentRow = 3
         
         self.param_names = list()
         self.param_edits = list()
         for pipeline_param_name, pipeline_param_val in parameters.items():
-            if pipeline_param_name != 'img' and pipeline_param_name != 'bkg' and pipeline_param_name != 'binary_mask' and pipeline_param_name != 'testmode':
+            if pipeline_param_name not in self.__paramsExclude:
                 # create param for input
                 param_name = QtGui.QLabel('{}'.format(pipeline_param_name))
                 param_value = pipeline_param_val.default if pipeline_param_val.default is not pipeline_param_val.empty else 0
                 param_edit = QtGui.QLineEdit(str(param_value))
                 # add param name and param to grid
-                self.grid.addWidget(param_name, currentRow, 0)
-                self.grid.addWidget(param_edit, currentRow, 1)
+                self.grid.addWidget(param_name, currentRow, 1)
+                self.grid.addWidget(param_edit, currentRow, 2)
                 # add param name and param to object list of temp widgets
                 self.param_names.append(param_name)
                 self.param_edits.append(param_edit)
@@ -201,6 +192,10 @@ class EtSTEDWidget(Widget):
         self.fastImgLasersPar.addItems(self.fastImgLasers)
         self.fastImgLasersPar.setCurrentIndex(0)
 
+    def setEventScatterData(self, x, y):
+        """ Updates scatter plot of detected coordinates with new data. """
+        self.eventScatterPlot.setData(x=x, y=y)
+
     def launchHelpWidget(self, widget, init=True):
         """ Launch the help widget. """
         if init:
@@ -209,27 +204,62 @@ class EtSTEDWidget(Widget):
             widget.hide()
 
 
-class BetterPushButton(QtWidgets.QPushButton):
-    """BetterPushButton is a QPushButton that does not become too small when
-    styled."""
+class AnalysisWidget(QtWidgets.QWidget):
+    """ Pop-up widget for the live analysis images or binary masks. """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    def __init__(self, text=None, minMinWidth=20, *args, **kwargs):
-        super().__init__(text, *args, **kwargs)
-        self._minMinWidth = minMinWidth
-        self.updateMinWidth(text)
+        self.imgVbWidget = pg.GraphicsLayoutWidget()
+        self.imgVb = self.imgVbWidget.addViewBox(row=1, col=1)
 
-    def setText(self, text, *args, **kwargs):
-        super().setText(text, *args, **kwargs)
-        self.updateMinWidth(text)
+        self.img = pg.ImageItem(axisOrder = 'row-major')
+        self.img.translate(-0.5, -0.5)
 
-    def updateMinWidth(self, text=None):
-        if text is None:
-            text = self.text()
+        self.imgVb.addItem(self.img)
+        self.imgVb.setAspectLocked(True)
 
-        fontMetrics = QtGui.QFontMetrics(self.font())
-        textWidth = fontMetrics.width(text)
-        minWidth = max(self._minMinWidth, textWidth + 8)
-        self.setStyleSheet(f'min-width: {minWidth}px')
+        self.info_label = QtGui.QLabel('<image info>')
+        
+        self.grid = QtGui.QGridLayout()
+        self.setLayout(self.grid)
+        self.grid.addWidget(self.info_label, 0, 0)
+        self.grid.addWidget(self.imgVbWidget, 1, 0)
+
+
+class CoordTransformWidget(QtWidgets.QWidget):
+    """ Pop-up widget for the coordinate transform between the two etSTED modalities. """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.loadLoResButton = QtWidgets.QPushButton('Load low-res calibration image')
+        self.loadHiResButton = QtWidgets.QPushButton('Load high-res calibration image')
+        self.saveCalibButton = QtWidgets.QPushButton('Save calibration')
+        self.resetCoordsButton = QtWidgets.QPushButton('Reset coordinates')
+
+        self.napariViewerLo = EmbeddedNapari()
+        self.napariViewerHi = EmbeddedNapari()
+
+        # add points layers to the viewer
+        self.pointsLayerLo = self.napariViewerLo.add_points(name="lo_points", symbol='ring', size=20, face_color='green', edge_color='green')
+        self.pointsLayerTransf = self.napariViewerHi.add_points(name="transf_points", symbol='cross', size=20, face_color='red', edge_color='red')
+        self.pointsLayerHi = self.napariViewerHi.add_points(name="hi_points", symbol='ring', size=20, face_color='green', edge_color='green')
+        
+
+        self.grid = QtGui.QGridLayout()
+        self.setLayout(self.grid)
+    
+        # initialize the controls for the coordinate transform help widget
+        currentRow = 0
+        self.grid.addWidget(self.loadLoResButton, currentRow, 0)
+        self.grid.addWidget(self.loadHiResButton, currentRow, 1)
+        
+        currentRow += 1
+        self.grid.addWidget(self.napariViewerLo.get_widget(), currentRow, 0)
+        self.grid.addWidget(self.napariViewerHi.get_widget(), currentRow, 1)
+
+        currentRow += 1
+        self.grid.addWidget(self.saveCalibButton, currentRow, 0)
+        self.grid.addWidget(self.resetCoordsButton, currentRow, 1)
 
 
 class EmbeddedNapari(napari.Viewer):
@@ -278,61 +308,100 @@ class EmbeddedNapari(napari.Viewer):
     def get_widget(self):
         return self.window._qt_window
 
-
-class AnalysisWidget(Widget):
-    """ Pop-up widget for the live analysis images or binary masks. """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.imgVbWidget = pg.GraphicsLayoutWidget()
-        self.imgVb = self.imgVbWidget.addViewBox(row=1, col=1)
-
-        self.img = pg.ImageItem(axisOrder = 'row-major')
-        self.img.translate(-0.5, -0.5)
-
-        self.imgVb.addItem(self.img)
-        self.imgVb.setAspectLocked(True)
-
-        self.info_label = QtGui.QLabel('<image info>')
-        
-        self.grid = QtGui.QGridLayout()
-        self.setLayout(self.grid)
-        self.grid.addWidget(self.info_label, 0, 0)
-        self.grid.addWidget(self.imgVbWidget, 1, 0)
+    def addItem(self, item):
+        item.attach(self,
+                    canvas=self.window.qt_viewer.canvas,
+                    view=self.window.qt_viewer.view,
+                    parent=self.window.qt_viewer.view.scene,
+                    order=1e6 + 8000)
 
 
-class CoordTransformWidget(Widget):
-    """ Pop-up widget for the coordinate transform between the two etSTED modalities. """
+class VispyBaseVisual(QtCore.QObject):
+    def __init__(self):
+        super().__init__()
+        self._viewer = None
+        self._view = None
+        self._canvas = None
+        self._nodes = []
+        self._visible = True
+        self._attached = False
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.loadLoResButton = BetterPushButton('Load low-res calibration image')
-        self.loadHiResButton = BetterPushButton('Load high-res calibration image')
-        self.saveCalibButton = BetterPushButton('Save calibration')
-        self.resetCoordsButton = BetterPushButton('Reset coordinates')
+    def attach(self, viewer, view, canvas, parent=None, order=0):
+        self._viewer = viewer
+        self._view = view
+        self._canvas = canvas
+        self._attached = True
 
-        self.napariViewerLo = EmbeddedNapari()
-        self.napariViewerHi = EmbeddedNapari()
+    def detach(self):
+        for node in self._nodes:
+            node.parent = None
 
-        # add points layers to the viewer
-        self.pointsLayerLo = self.napariViewerLo.add_points(name="lo_points", symbol='ring', size=20, face_color='green', edge_color='green')
-        self.pointsLayerTransf = self.napariViewerHi.add_points(name="transf_points", symbol='cross', size=20, face_color='red', edge_color='red')
-        self.pointsLayerHi = self.napariViewerHi.add_points(name="hi_points", symbol='ring', size=20, face_color='green', edge_color='green')
-        
+        self._viewer = None
+        self._view = None
+        self._canvas = None
+        self._attached = False
 
-        self.grid = QtGui.QGridLayout()
-        self.setLayout(self.grid)
-    
-        # initialize the controls for the coordinate transform help widget
-        currentRow = 0
-        self.grid.addWidget(self.loadLoResButton, currentRow, 0)
-        self.grid.addWidget(self.loadHiResButton, currentRow, 1)
-        
-        currentRow += 1
-        self.grid.addWidget(self.napariViewerLo.get_widget(), currentRow, 0)
-        self.grid.addWidget(self.napariViewerHi.get_widget(), currentRow, 1)
+    def setVisible(self, value):
+        for node in self._nodes:
+            node.visible = value
 
-        currentRow += 1
-        self.grid.addWidget(self.saveCalibButton, currentRow, 0)
-        self.grid.addWidget(self.resetCoordsButton, currentRow, 1)
+        self._visible = value
 
+    def show(self):
+        self.setVisible(True)
+
+    def hide(self):
+        self.setVisible(False)
+
+    def _get_center_line_p1(self, pos, line_length, vertical):
+        if vertical:
+            return [pos[0], pos[1] - line_length / 2, 0]
+        else:
+            return [pos[0] - line_length / 2, pos[1], 0]
+
+    def _get_center_line_p2(self, pos, line_length, vertical):
+        if vertical:
+            return [pos[0], pos[1] + line_length / 2, 0]
+        else:
+            return [pos[0] + line_length / 2, pos[1], 0]
+
+
+class VispyScatterVisual(VispyBaseVisual):
+    def __init__(self, color='red', symbol='x'):
+        super().__init__()
+        self._color = Color(color)
+        self._symbol = symbol
+        self._markers_data = -1e8 * np.ones((1, 2))
+
+    def attach(self, viewer, view, canvas, parent=None, order=0):
+        super().attach(viewer, view, canvas, parent, order)
+
+        self.node = Markers(pos=self._markers_data, parent=parent)
+        self.node.transform = STTransform()
+        self.node.order = order
+
+        self._nodes = [self.node]
+
+        self._viewer.dims.events.ndisplay.connect(self._on_data_change)
+
+        self._on_data_change(None)
+
+    def setVisible(self, value):
+        super().setVisible(value)
+        self._on_data_change(None)
+
+    def setData(self, x, y):
+        self._markers_data = np.column_stack((x, y))
+        self._on_data_change(None)
+
+    def _on_data_change(self, event):
+        if not self._attached or not self._visible:
+            return
+
+        # Actual number of displayed dims
+        ndisplay = len(self._viewer.dims.displayed)
+        if ndisplay != 2:
+            raise ValueError('ndisplay not supported')
+
+        self.node.set_data(self._markers_data, edge_color=self._color, face_color=self._color,
+                           symbol=self._symbol)
