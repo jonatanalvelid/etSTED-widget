@@ -1,17 +1,13 @@
 import os
 
+import napari
 import pyqtgraph as pg
 import numpy as np
-import napari
-
 from napari.utils.translations import trans
-from vispy.color import Color
 from vispy.scene.visuals import Markers
+from vispy.color import Color
 from vispy.visuals.transforms import STTransform
-from pyqtgraph.Qt import QtCore
-from PyQt5 import QtGui, QtWidgets
-
-#from basewidgets import Widget
+from PyQt5 import QtGui, QtWidgets, QtCore
 
 _etstedDir = os.path.join('C:\\etSTED', 'imcontrol_etsted')
 
@@ -21,6 +17,8 @@ class EtSTEDWidget(QtWidgets.QWidget):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        print('Initializing etSTED widget')
 
         self.analysisDir = os.path.join(_etstedDir, 'analysis_pipelines')
         self.transformDir = os.path.join(_etstedDir, 'transform_pipelines')
@@ -42,6 +40,7 @@ class EtSTEDWidget(QtWidgets.QWidget):
         self.analysisPipelinePar.addItems(self.analysisPipelines)
         self.analysisPipelinePar.setCurrentIndex(0)
         
+        # pipeline parameters to exclude from GUI fields
         self.__paramsExclude = ['img', 'bkg', 'binary_mask', 'exinfo', 'testmode']
         
         # add all available coordinate transformations to the dropdown list
@@ -72,7 +71,7 @@ class EtSTEDWidget(QtWidgets.QWidget):
         self.experimentModesPar_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignCenter)
         self.experimentModesPar.addItems(self.experimentModes)
         self.experimentModesPar.setCurrentIndex(0)
-
+        # create lists for current pipeline parameters: labels and editable text fields
         self.param_names = list()
         self.param_edits = list()
 
@@ -89,7 +88,7 @@ class EtSTEDWidget(QtWidgets.QWidget):
 
         self.bin_thresh_label = QtGui.QLabel('Bin. threshold')
         self.bin_thresh_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
-        self.bin_thresh_edit = QtGui.QLineEdit(str(9))
+        self.bin_thresh_edit = QtGui.QLineEdit(str(10))
         self.bin_smooth_label = QtGui.QLabel('Bin. smooth (px)')
         self.bin_smooth_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
         self.bin_smooth_edit = QtGui.QLineEdit(str(2))
@@ -106,10 +105,10 @@ class EtSTEDWidget(QtWidgets.QWidget):
         # help widget for showing images from the analysis pipelines, i.e. binary masks or analysed images in live
         self.analysisHelpWidget = AnalysisWidget(*args, **kwargs)
 
+        # generate GUI layout
         self.grid = QtGui.QGridLayout()
         self.setLayout(self.grid)
 
-        # initialize widget controls
         currentRow = 0
 
         self.grid.addWidget(self.imageViewer.get_widget(), currentRow, 0, 7, 1)
@@ -153,7 +152,7 @@ class EtSTEDWidget(QtWidgets.QWidget):
         self.grid.addWidget(self.setBusyFalseButton, currentRow, 4)
 
     def initParamFields(self, parameters: dict):
-        """ Initialized etSTED widget parameter fields. """
+        """ Initialized event-triggered analysis pipeline parameter fields. """
         # remove previous parameter fields for the previously loaded pipeline
         for param in self.param_names:
             self.grid.removeWidget(param)
@@ -220,8 +219,10 @@ class AnalysisWidget(QtWidgets.QWidget):
 
         self.info_label = QtGui.QLabel('<image info>')
         
+        # generate GUI layout
         self.grid = QtGui.QGridLayout()
         self.setLayout(self.grid)
+
         self.grid.addWidget(self.info_label, 0, 0)
         self.grid.addWidget(self.imgVbWidget, 1, 0)
 
@@ -244,11 +245,10 @@ class CoordTransformWidget(QtWidgets.QWidget):
         self.pointsLayerTransf = self.napariViewerHi.add_points(name="transf_points", symbol='cross', size=20, face_color='red', edge_color='red')
         self.pointsLayerHi = self.napariViewerHi.add_points(name="hi_points", symbol='ring', size=20, face_color='green', edge_color='green')
         
-
+        # generate GUI layout
         self.grid = QtGui.QGridLayout()
         self.setLayout(self.grid)
     
-        # initialize the controls for the coordinate transform help widget
         currentRow = 0
         self.grid.addWidget(self.loadLoResButton, currentRow, 0)
         self.grid.addWidget(self.loadHiResButton, currentRow, 1)
@@ -265,7 +265,8 @@ class CoordTransformWidget(QtWidgets.QWidget):
 class EmbeddedNapari(napari.Viewer):
     """ Napari viewer to be embedded in non-napari windows. Also includes a
     feature to protect certain layers from being removed when added using
-    the add_image method. """
+    the add_image method. Copied from ImSwitch (github.com/kasasxav/ImSwitch).
+    """
 
     def __init__(self, *args, show=False, **kwargs):
         super().__init__(*args, show=show, **kwargs)
@@ -317,6 +318,9 @@ class EmbeddedNapari(napari.Viewer):
 
 
 class VispyBaseVisual(QtCore.QObject):
+    """ Visual item to add in napari window.
+    Copied from ImSwitch (github.com/kasasxav/ImSwitch).
+    """
     def __init__(self):
         super().__init__()
         self._viewer = None
@@ -367,6 +371,9 @@ class VispyBaseVisual(QtCore.QObject):
 
 
 class VispyScatterVisual(VispyBaseVisual):
+    """ Scatter plot to add in napari window.
+    Copied from ImSwitch (github.com/kasasxav/ImSwitch).
+    """
     def __init__(self, color='red', symbol='x'):
         super().__init__()
         self._color = Color(color)

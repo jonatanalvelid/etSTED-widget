@@ -10,41 +10,20 @@ from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 
 import h5py
-from scipy.optimize import least_squares
 import scipy.ndimage as ndi
 import numpy as np
+from scipy.optimize import least_squares
 from PyQt5.QtCore import QObject, QThread, QTimer, pyqtSignal
-
-from basecontrollers import WidgetController
-
 
 _logsDir = os.path.join('C:\\etSTED', 'recordings', 'logs_etsted')
 
 
-def insertSuffix(filename, suffix, newExt=None):
-    names = os.path.splitext(filename)
-    if newExt is None:
-        return names[0] + suffix + names[1]
-    else:
-        return names[0] + suffix + newExt
-
-def getUniqueName(name):
-    name, ext = os.path.splitext(name)
-    n = 1
-    while glob.glob(name + ".*"):
-        if n > 1:
-            name = name.replace('_{}'.format(n - 1), '_{}'.format(n))
-        else:
-            name = insertSuffix(name, '_{}'.format(n))
-        n += 1
-    return ''.join((name, ext))
-
-
-class EtSTEDController(WidgetController):
+class EtSTEDController():
     """ Linked to EtSTEDWidget."""
 
-    def __init__(self, camera, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, camera, setupInfo, widget, *args, **kwargs):
+        self._setupInfo = setupInfo
+        self._widget = widget
         
         print('Initializing etSTED controller')
 
@@ -56,6 +35,7 @@ class EtSTEDController(WidgetController):
         self.laserList = ['WFLaser','ExcLaser','StedLaser']
         self._widget.setFastLaserList(self.laserList)
 
+        # add folders of analysis pipelines and coordinate transformations, from etSTED documents folder
         sys.path.append(self._widget.analysisDir)
         sys.path.append(self._widget.transformDir)
 
@@ -67,8 +47,10 @@ class EtSTEDController(WidgetController):
         # create a helper controller for the coordinate transform pop-out widget
         self.__coordTransformHelper = EtSTEDCoordTransformHelper(self, self._widget.coordTransformWidget, _logsDir)
 
-        # add camera image to napariviewer and update it automatically
+        # add camera image to napariviewer
         self.camImageLayer = self._widget.imageViewer.add_image(self.camera.getImage())
+        # update camera image automatically (mock)
+        # real use-case: use detector manager and image updated signals of software where implemented
         self.camImgThread = QThread()
         self.camImgWorker = CameraImageWorker(self, camera)
         self.camImgWorker.moveToThread(self.camImgThread)
@@ -84,8 +66,9 @@ class EtSTEDController(WidgetController):
 
         # initiate log for each detected event
         self.resetDetLog()
+        self.getScanParameters()  # mock: to avoid having to manually press the button
 
-        # initiate flags and params
+        # initiate flags and other parameters
         self.__running = False
         self.__runMode = RunMode.Experiment
         self.__validating = False
@@ -101,7 +84,6 @@ class EtSTEDController(WidgetController):
         self.__frame = 0
 
         self.t_call = 0
-
 
     def initiate(self):
         """ Initiate or stop an etSTED experiment. """
@@ -328,29 +310,46 @@ class EtSTEDController(WidgetController):
     def runPipeline(self, img):
         """ Run the analyis pipeline, called after every fast method frame. """
         if not self.__busy:
+            # if not still running pipeline on last frame
+            self.__busy = True
+            # get time since last pipeline run (ms) and log
             dt = datetime.now()
-            t_sincelastcall = round(dt.microsecond/1000) - self.t_call
-            dt = datetime.now()
-            self.t_call = round(dt.microsecond/1000)
+            self.t_latestcall = round(dt.microsecond/1000)
+            t_sincelastcall = self.t_latestcall - self.t_call
+            self.t_call = self.t_latestcall
             self.setDetLogLine("pipeline_rep_period", str(t_sincelastcall))
             self.setDetLogLine("pipeline_start", datetime.now().strftime('%Ss%fus'))
-            self.__busy = True
+
+            # run pipeline
             if self.__runMode == RunMode.TestVisualize or self.__runMode == RunMode.TestValidate:
-                coords_detected, self.__exinfo, img_ana = self.pipeline(img, self.__bkg, self.__binary_mask, (self.__runMode==RunMode.TestVisualize or self.__runMode==RunMode.TestValidate), self.__exinfo, *self.__param_vals)
+                # if chosen a test mode: run pipeline with analysis image return
+                coords_detected, self.__exinfo, img_ana = self.pipeline(img, self.__bkg, self.__binary_mask,
+                                                                        (self.__runMode==RunMode.TestVisualize or
+                                                                        self.__runMode==RunMode.TestValidate),
+                                                                        self.__exinfo, *self.__param_vals)
             else:
-                coords_detected, self.__exinfo = self.pipeline(img, self.__bkg, self.__binary_mask, self.__runMode==RunMode.TestVisualize, self.__exinfo, *self.__param_vals)
+                # if chosen experiment mode: run pipeline without analysis image return
+                coords_detected, self.__exinfo = self.pipeline(img, self.__bkg, self.__binary_mask,
+                                                               self.__runMode==RunMode.TestVisualize,
+                                                               self.__exinfo, *self.__param_vals)
             self.setDetLogLine("pipeline_end", datetime.now().strftime('%Ss%fus'))
 
-            # run if the initial frames have passed
             if self.__frame > self.__init_frames:
+                # if initial settling frames have passed
                 if self.__runMode == RunMode.TestVisualize:
+                    # if visualization mode: only update scatter and set analysis image in help widget
                     self.updateScatter(coords_detected)
                     self.setAnalysisHelpImg(img_ana)
                 elif self.__runMode == RunMode.TestValidate:
+                    # if validation mode: update scatter, set analysis image in help widget,
+                    # and start to record validation frames after event
                     self.updateScatter(coords_detected)
                     self.setAnalysisHelpImg(img_ana)
                     if self.__validating:
+                        # if currently validating
                         if self.__validationFrames > 5:
+                            # if all validation frames have been recorded, pause fast imaging,
+                            # end recording, and then continue fast imaging
                             self.saveValidationImages(prev=True, prev_ana=True)
                             self.pauseFastModality()
                             self.endRecording()
@@ -359,7 +358,8 @@ class EtSTEDController(WidgetController):
                             self.__validating = False
                         self.__validationFrames += 1
                     elif coords_detected.size != 0:
-                        # if some events where detected
+                        # if some events where detected and not validating
+                        # take first detected coords as event
                         if np.size(coords_detected) > 2:
                             coords_scan = coords_detected[0,:]
                         else:
@@ -372,44 +372,53 @@ class EtSTEDController(WidgetController):
                             for i in range(np.size(coords_detected,0)):
                                 self.setDetLogLine("det_coord_x_", coords_detected[i,0], i)
                                 self.setDetLogLine("det_coord_y_", coords_detected[i,1], i)
+                        # flag for start of validation
                         self.__validating = True
                         self.__validationFrames = 0
                 elif coords_detected.size != 0:
-                    # if some events were detected
+                    # if experiment mode, and some events were detected
+                    # take first detected coords as event
                     if np.size(coords_detected) > 2:
                         coords_scan = coords_detected[0,:]
                     else:
                         coords_scan = coords_detected[0]
                     self.setDetLogLine("prepause", datetime.now().strftime('%Ss%fus'))
+                    # pause fast imaging
                     self.pauseFastModality()
                     self.setDetLogLine("coord_transf_start", datetime.now().strftime('%Ss%fus'))
+                    # transform detected coordinate between fast and scanning imaging spaces
                     coords_center_scan = self.transform(coords_scan, self.__transformCoeffs)
+                    # log detected and scanning center coordinate
                     self.setDetLogLine("fastscan_x_center", coords_scan[0])
                     self.setDetLogLine("fastscan_y_center", coords_scan[1])
                     self.setDetLogLine("slowscan_x_center", coords_center_scan[0])
                     self.setDetLogLine("slowscan_y_center", coords_center_scan[1])
                     self.setDetLogLine("scan_initiate", datetime.now().strftime('%Ss%fus'))
-                    # save all detected coordinates in the log
+                    # log all detected coordinates
                     if np.size(coords_detected) > 2:
                         for i in range(np.size(coords_detected,0)):
                             self.setDetLogLine("det_coord_x_", coords_scan[0], i)
                             self.setDetLogLine("det_coord_y_", coords_scan[1], i)
-                    
+                    # initiate and run scanning with transformed center coordinate
                     self.initiateSlowScan(position=coords_center_scan)
                     self.runSlowScan()
 
                     # update scatter plot of event coordinates in the shown fast method image
                     self.updateScatter(coords_detected)
-
+                    # buffer latest fast frame and save validation images
                     self.__prevFrames.append(img)
                     self.saveValidationImages(prev=True, prev_ana=False)
                     self.__busy = False
                     return
+            # use latest fast frame as background for next pipeline run
             self.__bkg = img
+            # buffer latest fast frame and save validation images
             self.__prevFrames.append(img)
             if self.__runMode == RunMode.TestValidate:
+                # if validation mode: buffer previous preprocessed analysis frame
                 self.__prevAnaFrames.append(img_ana)
             self.__frame += 1
+            # unset busy flag
             self.setBusyFalse()
 
     def initiateSlowScan(self, position=[0.0,0.0]):
@@ -418,38 +427,42 @@ class EtSTEDController(WidgetController):
         self.setCenterScanParameter(position)
         # generate scanning curves through scanning part of software and save to self.signalDic
         #self.signalDict = xxx.genereateScanCurves(self._scanParameterDict)
-        self.signalDict = {} # mock: empty signal dictionaries
+        self.signalDict = {}  # mock: empty signal dictionaries
 
     def setCenterScanParameter(self, position):
         """ Set the scanning center from the detected event coordinates. """
         if self._scanParameterDict != {}:
+            # if scan parameters have been loaded
             self._scanParameterDict['axis_centerpos'] = []
+            # null center positions
             for index,_ in enumerate(self._scanParameterDict['target_device']):
+                # for each scanning device (assuming X fast and Y slow)
                 center = position[index]
                 if index==0:
+                    # if fast axis: add shift to detected position due to scanning lag etc
                     center = self.addFastAxisShift(center)
+                # save event coordinate as center for scanning device
                 self._scanParameterDict['axis_centerpos'].append(center)
 
     def addFastAxisShift(self, center):
         """ Add a scanning-method and microscope-specific shift to the fast axis scanning. 
-        For Alvelid et al 2022: based on second-degree curved surface fit to 2D-sampling of dwell time and pixel size induced shifts. """
+        For Alvelid et al 2022: based on second-degree curved surface fit to 2D-sampling
+        of dwell time and pixel size induced shifts. """
         dwell_time = float(self._scanParameterDict['dwell_time'])
         px_size = float(self._scanParameterDict['axis_pixel_size'][0])
-        C = np.array([0, 0, 0, 0, 0, 0])  # second order plane fit
+        C = np.array([0, 0, 0, 0, 0, 0])  # second order plane fit, here mock null shift
         params = np.array([px_size**2, dwell_time**2, px_size*dwell_time, px_size, dwell_time, 1])  # for use with second order plane fit
         shift_compensation = np.sum(params*C)
         center -= shift_compensation
         return(center)
 
     def saveValidationImages(self, prev=True, prev_ana=True):
-        """ Save the widefield validation images of an event detection. """
+        """ Save the validation fast images of an event detection, fast images and/or preprocessed analysis images. """
         if prev:
-            #img = np.array(list(self.__prevFrames))
-            # save detectorFast frames leading up to event #xxx.sigSnapImagePrev.emit(self.detectorFast, img, 'raw') # (detector, image, name_suffix)
+            # save detectorFast frames leading up to event #xxx.sigSaveImage.emit(self.detectorFast, np.array(list(self.__prevFrames)), 'raw') # (detector, imagestack, name_suffix)
             self.__prevFrames.clear()
         if prev_ana:
-            #img = np.array(list(self.__prevAnaFrames))
-            # save preprocessed images leading up to event #xxx.sigSnapImagePrev.emit(self.detectorFast, img, 'ana') # (detector, image, name_suffix)
+            # save preprocessed images leading up to event #xxx.sigSaveImage.emit(self.detectorFast, np.array(list(self.__prevAnaFrames)), 'ana') # (detector, imagestack, name_suffix)
             self.__prevAnaFrames.clear()
 
     def pauseFastModality(self):
@@ -468,7 +481,7 @@ class EtSTEDCoordTransformHelper():
     """ Coordinate transform help widget controller. """
     def __init__(self, etSTEDController, coordTransformWidget, saveFolder, *args, **kwargs):
 
-        self.etSTEDController = etSTEDController
+        self._etSTEDController = etSTEDController
         self._widget = coordTransformWidget
         self.__saveFolder = saveFolder
 
@@ -483,7 +496,7 @@ class EtSTEDCoordTransformHelper():
         self.__hiResSize = 1
 
         # connect signals from widget
-        etSTEDController._widget.coordTransfCalibButton.clicked.connect(self.calibrationLaunch)
+        self._etSTEDController._widget.coordTransfCalibButton.clicked.connect(self.calibrationLaunch)
         self._widget.saveCalibButton.clicked.connect(self.calibrationFinish)
         self._widget.resetCoordsButton.clicked.connect(self.resetCalibrationCoords)
         self._widget.loadLoResButton.clicked.connect(lambda: self.loadCalibImage('lo'))
@@ -495,7 +508,7 @@ class EtSTEDCoordTransformHelper():
 
     def calibrationLaunch(self):
         """ Launch calibration. """
-        self.etSTEDController._widget.launchHelpWidget(self.etSTEDController._widget.coordTransformWidget, init=True)
+        self._etSTEDController._widget.launchHelpWidget(self._etSTEDController._widget.coordTransformWidget, init=True)
 
     def calibrationFinish(self):
         """ Finish calibration. """
@@ -535,9 +548,9 @@ class EtSTEDCoordTransformHelper():
         self._widget.pointsLayerTransf.data = []
 
     def loadCalibImage(self, modality):
-        """ Load low or high resolution calibration image. """
+        """ Load fast or scan calibration image. """
         # open gui to choose file
-        img_filename = self.openFolder()
+        img_filename = self.findFile()
         # load img data from file
         with h5py.File(img_filename, "r") as f:
             img_key = list(f.keys())[0]
@@ -555,8 +568,8 @@ class EtSTEDCoordTransformHelper():
             self.__loResCoords = list()
             self.__loResPxSize = pixelsize
 
-    def openFolder(self):
-        """ Opens current folder in File Explorer and returns chosen filename. """
+    def findFile(self):
+        """ Opens current folder in the file explorer and returns chosen filename. """
         Tk().withdraw()
         filename = askopenfilename()
         return filename
@@ -605,6 +618,7 @@ class EtSTEDCoordTransformHelper():
 
 
 class CameraImageWorker(QObject):
+    """ Worker for handling pulling of camera images. """
     started = pyqtSignal()
     finished = pyqtSignal()
     newFrame = pyqtSignal(object)
@@ -631,6 +645,24 @@ class RunMode(enum.Enum):
     Experiment = 1
     TestVisualize = 2
     TestValidate = 3
+
+def insertSuffix(filename, suffix, newExt=None):
+    names = os.path.splitext(filename)
+    if newExt is None:
+        return names[0] + suffix + names[1]
+    else:
+        return names[0] + suffix + newExt
+
+def getUniqueName(name):
+    name, ext = os.path.splitext(name)
+    n = 1
+    while glob.glob(name + ".*"):
+        if n > 1:
+            name = name.replace('_{}'.format(n - 1), '_{}'.format(n))
+        else:
+            name = insertSuffix(name, '_{}'.format(n))
+        n += 1
+    return ''.join((name, ext))
 
 
 # Copyright (C) 2020-2022 ImSwitch developers
