@@ -6,8 +6,7 @@ import enum
 from collections import deque
 from datetime import datetime
 from inspect import signature
-from tkinter import Tk
-from tkinter.filedialog import askopenfilename
+from tkinter import Tk, filedialog
 
 import h5py
 import scipy.ndimage as ndi
@@ -15,7 +14,10 @@ import numpy as np
 from scipy.optimize import least_squares
 from PyQt5.QtCore import QObject, QThread, QTimer, pyqtSignal
 
+# folder path for saved log files
 _logsDir = os.path.join('C:\\etSTED', 'recordings', 'logs_etsted')
+# folder path for pipelines and coordinate transformation files
+_etstedDir = os.path.join('C:\\etSTED', 'imcontrol_etsted')
 
 
 class EtSTEDController():
@@ -29,20 +31,24 @@ class EtSTEDController():
 
         self.camera = camera
 
+        # folders for analysis pipelines and transformations
+        self.analysisDir = os.path.join(_etstedDir, 'analysis_pipelines')
+        if not os.path.exists(self.analysisDir):
+            os.makedirs(self.analysisDir)
+        sys.path.append(self.analysisDir)
+        self.transformDir = os.path.join(_etstedDir, 'transform_pipelines')
+        if not os.path.exists(self.transformDir):
+            os.makedirs(self.transformDir)
+        sys.path.append(self.transformDir)
+        # set lists of analysis pipelines and transformations in the widget
+        self._widget.setAnalysisPipelines(self.analysisDir)
+        self._widget.setTransformations(self.transformDir)
+
         self.detectorList = ['MockCamera']
         self._widget.setFastDetectorList(self.detectorList)
 
-        self.laserList = ['WFLaser','ExcLaser','StedLaser']
+        self.laserList = ['WFLaser','ExcLaser','STEDLaser']
         self._widget.setFastLaserList(self.laserList)
-
-        # add folders of analysis pipelines and coordinate transformations, from etSTED documents folder
-        sys.path.append(self._widget.analysisDir)
-        sys.path.append(self._widget.transformDir)
-
-        # detectors for fast (widefield) and slow (sted) imaging, and laser for fast
-        self.detectorFast = 'detectorFast' #self._setupInfo.etSTED.detectorFast
-        self.detectorSlow = 'detectorSlow' #self._setupInfo.etSTED.detectorSlow
-        self.laserFast = 'laserFast' #self._setupInfo.etSTED.laserFast
 
         # create a helper controller for the coordinate transform pop-out widget
         self.__coordTransformHelper = EtSTEDCoordTransformHelper(self, self._widget.coordTransformWidget, _logsDir)
@@ -67,27 +73,29 @@ class EtSTEDController():
         # initiate log for each detected event
         self.resetDetLog()
         self.getScanParameters()  # mock: to avoid having to manually press the button
+        # initiate other parameters and flags used during experiments
+        self.initiateFlagsParams()
 
-        # initiate flags and other parameters
-        self.__running = False
-        self.__runMode = RunMode.Experiment
-        self.__validating = False
-        self.__busy = False
-        self.__bkg = None
-        self.__prevFrames = deque(maxlen=10)
-        self.__prevAnaFrames = deque(maxlen=10)
-        self.__binary_mask = None
-        self.__binary_stack = None
-        self.__binary_frames = 10
-        self.__init_frames = 5
-        self.__validationFrames = 0
-        self.__frame = 0
-
+    def initiateFlagsParams(self):
+        # initiate flags and params
+        self.__running = False  # run flag
+        self.__runMode = RunMode.Experiment  # run mode currently used
+        self.__validating = False  # validation flag
+        self.__busy = False  # running pipeline busy flag
+        self.__bkg = None  # bkg image
+        self.__prevFrames = deque(maxlen=10)  # deque for previous fast frames
+        self.__prevAnaFrames = deque(maxlen=10)  # deque for previous preprocessed analysis frames
+        self.__binary_mask = None  # binary mask of regions of interest, used by certain pipelines, leave None to consider the whole image
+        self.__binary_frames = 10  # number of frames to use for calculating binary mask 
+        self.__init_frames = 5  # number of frames after initiating etSTED before a trigger can occur, to allow laser power settling etc
+        self.__validation_frames = 5  # number of fast frames to record after detecting an event in validation mode
         self.t_call = 0
+        self.__params_exclude = ['img', 'bkg', 'binary_mask', 'exinfo', 'testmode']  # excluded pipeline parameters when loading param fields
 
     def initiate(self):
         """ Initiate or stop an etSTED experiment. """
         if not self.__running:
+            # detector and laser for fast imaging
             detectorFastIdx = self._widget.fastImgDetectorsPar.currentIndex()
             self.detectorFast = self._widget.fastImgDetectors[detectorFastIdx]
             laserFastIdx = self._widget.fastImgLasersPar.currentIndex()
@@ -95,6 +103,8 @@ class EtSTEDController():
 
             # Read GUI params for analysis pipeline
             self.__param_vals = self.readParams()
+            # reset general run parameters
+            self.resetRunParams()
             # Reset parameter for extra information that pipelines can input and output
             self.__exinfo = None
 
@@ -141,7 +151,7 @@ class EtSTEDController():
         # emit signal to save the last scanned image #xxx.sigSnapImg.emit()
         self.endRecording()
         self.continueFastModality()
-        self.__frame = 0
+        self.__fast_frame = 0
 
     def setDetLogLine(self, key, val, *args):
         if args:
@@ -201,8 +211,8 @@ class EtSTEDController():
             self._widget.initiateButton.setText('Stop')
             self.__running = True
         elif not self._widget.endlessScanCheck.isChecked():
-            self._widget.initiateButton.setText('Initiate')
             # disconnect signal from end of scan to scanEnded() #xxx.sigScanEnded.disconnect(self.scanEnded)
+            self._widget.initiateButton.setText('Initiate')
             self.__running = False
             self.resetParamVals()
 
@@ -216,7 +226,7 @@ class EtSTEDController():
         pipelinename = self.getPipelineName()
         self.pipeline = getattr(importlib.import_module(f'{pipelinename}'), f'{pipelinename}')
         self.__pipeline_params = signature(self.pipeline).parameters
-        self._widget.initParamFields(self.__pipeline_params)
+        self._widget.initParamFields(self.__pipeline_params, self.__params_exclude)
 
     def initiateBinaryMask(self):
         """ Initiate the process of calculating a binary mask of the region of interest. """
@@ -252,7 +262,7 @@ class EtSTEDController():
 
     def setAnalysisHelpImg(self, img):
         """ Set the preprocessed image in the analysis help widget. """
-        if self.__frame < self.__init_frames + 3:
+        if self.__fast_frame < self.__init_frames + 3:
             autolevels = True
         else:
             autolevels = False
@@ -305,7 +315,8 @@ class EtSTEDController():
         """ Reset general pipeline run parameters. """
         self.__running = False
         self.__validating = False
-        self.__frame = 0
+        self.__fast_frame = 0
+        self.__post_event_frames = 0
 
     def runPipeline(self, img):
         """ Run the analyis pipeline, called after every fast method frame. """
@@ -334,7 +345,7 @@ class EtSTEDController():
                                                                self.__exinfo, *self.__param_vals)
             self.setDetLogLine("pipeline_end", datetime.now().strftime('%Ss%fus'))
 
-            if self.__frame > self.__init_frames:
+            if self.__fast_frame > self.__init_frames:
                 # if initial settling frames have passed
                 if self.__runMode == RunMode.TestVisualize:
                     # if visualization mode: only update scatter and set analysis image in help widget
@@ -347,16 +358,16 @@ class EtSTEDController():
                     self.setAnalysisHelpImg(img_ana)
                     if self.__validating:
                         # if currently validating
-                        if self.__validationFrames > 5:
+                        if self.__post_event_frames > self.__validation_frames:
                             # if all validation frames have been recorded, pause fast imaging,
                             # end recording, and then continue fast imaging
                             self.saveValidationImages(prev=True, prev_ana=True)
                             self.pauseFastModality()
                             self.endRecording()
                             self.continueFastModality()
-                            self.__frame = 0
+                            self.__fast_frame = 0
                             self.__validating = False
-                        self.__validationFrames += 1
+                        self.__post_event_frames += 1
                     elif coords_detected.size != 0:
                         # if some events where detected and not validating
                         # take first detected coords as event
@@ -374,7 +385,7 @@ class EtSTEDController():
                                 self.setDetLogLine("det_coord_y_", coords_detected[i,1], i)
                         # flag for start of validation
                         self.__validating = True
-                        self.__validationFrames = 0
+                        self.__post_event_frames = 0
                 elif coords_detected.size != 0:
                     # if experiment mode, and some events were detected
                     # take first detected coords as event
@@ -417,7 +428,7 @@ class EtSTEDController():
             if self.__runMode == RunMode.TestValidate:
                 # if validation mode: buffer previous preprocessed analysis frame
                 self.__prevAnaFrames.append(img_ana)
-            self.__frame += 1
+            self.__fast_frame += 1
             # unset busy flag
             self.setBusyFalse()
 
@@ -571,7 +582,7 @@ class EtSTEDCoordTransformHelper():
     def findFile(self):
         """ Opens current folder in the file explorer and returns chosen filename. """
         Tk().withdraw()
-        filename = askopenfilename()
+        filename = filedialog.askopenfilename()
         return filename
 
     def updateCalibImage(self, img_data, modality):

@@ -1,0 +1,10 @@
+h5py
+napari
+numpy
+PyQt5 >= 5
+pyqtgraph
+qtpy
+scikit-image
+scipy
+vispy
+opencv-python

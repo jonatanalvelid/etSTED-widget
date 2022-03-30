@@ -9,8 +9,6 @@ from vispy.color import Color
 from vispy.visuals.transforms import STTransform
 from PyQt5 import QtGui, QtWidgets, QtCore
 
-_etstedDir = os.path.join('C:\\etSTED', 'imcontrol_etsted')
-
 
 class EtSTEDWidget(QtWidgets.QWidget):
     """ Widget for controlling the etSTED implementation. """
@@ -20,46 +18,18 @@ class EtSTEDWidget(QtWidgets.QWidget):
 
         print('Initializing etSTED widget')
 
-        self.analysisDir = os.path.join(_etstedDir, 'analysis_pipelines')
-        self.transformDir = os.path.join(_etstedDir, 'transform_pipelines')
-        
-        if not os.path.exists(self.analysisDir):
-            os.makedirs(self.analysisDir)
-
-        if not os.path.exists(self.transformDir):
-            os.makedirs(self.transformDir)
-        
-        # add all available analysis pipelines to the dropdown list
+        # generate dropdown list for analysis pipelines
         self.analysisPipelines = list()
         self.analysisPipelinePar = QtGui.QComboBox()
-        for pipeline in os.listdir(self.analysisDir):
-            if os.path.isfile(os.path.join(self.analysisDir, pipeline)):
-                pipeline = pipeline.split('.')[0]
-                self.analysisPipelines.append(pipeline)
-        
-        self.analysisPipelinePar.addItems(self.analysisPipelines)
-        self.analysisPipelinePar.setCurrentIndex(0)
-        
-        # pipeline parameters to exclude from GUI fields
-        self.__paramsExclude = ['img', 'bkg', 'binary_mask', 'exinfo', 'testmode']
-        
-        # add all available coordinate transformations to the dropdown list
+        # generate dropdown list for coordinate transformations
         self.transformPipelines = list()
         self.transformPipelinePar = QtGui.QComboBox()
-        for transform in os.listdir(self.transformDir):
-            if os.path.isfile(os.path.join(self.transformDir, transform)):
-                transform = transform.split('.')[0]
-                self.transformPipelines.append(transform)
-        
-        self.transformPipelinePar.addItems(self.transformPipelines)
-        self.transformPipelinePar.setCurrentIndex(0)
-
-        # add all forAcquisition detectors in a dropdown list, for being the fastImgDetector (widefield)
+        # generate dropdown list for fast imaging detectors
         self.fastImgDetectors = list()
         self.fastImgDetectorsPar = QtGui.QComboBox()
         self.fastImgDetectorsPar_label = QtGui.QLabel('Fast detector')
         self.fastImgDetectorsPar_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
-        # add all lasers in a dropdown list, for being the fastImgLaser (widefield)
+        # generate dropdown list for fast imaging lasers
         self.fastImgLasers = list()
         self.fastImgLasersPar = QtGui.QComboBox()
         self.fastImgLasersPar_label = QtGui.QLabel('Fast laser')
@@ -74,18 +44,19 @@ class EtSTEDWidget(QtWidgets.QWidget):
         # create lists for current pipeline parameters: labels and editable text fields
         self.param_names = list()
         self.param_edits = list()
-
+        # create buttons for initiating the event-triggered imaging and loading the pipeline
         self.initiateButton = QtWidgets.QPushButton('Initiate etSTED')
         self.initiateButton.setSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Expanding)
         self.loadPipelineButton = QtWidgets.QPushButton('Load pipeline')
-        
+        # create buttons for calibrating coordinate transform, recording binary mask, loading scan params
         self.coordTransfCalibButton = QtWidgets.QPushButton('Transform calibration')
         self.recordBinaryMaskButton = QtWidgets.QPushButton('Record binary mask')
         self.loadScanParametersButton = QtWidgets.QPushButton('Load scan parameters')
+        # creat button for unlocking any softlock happening
         self.setBusyFalseButton = QtWidgets.QPushButton('Unlock softlock')
-
+        # create check box for endless running mode
         self.endlessScanCheck = QtGui.QCheckBox('Endless')
-
+        # create editable fields for binary mask calculation threshold and smoothing
         self.bin_thresh_label = QtGui.QLabel('Bin. threshold')
         self.bin_thresh_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
         self.bin_thresh_edit = QtGui.QLineEdit(str(10))
@@ -151,7 +122,7 @@ class EtSTEDWidget(QtWidgets.QWidget):
         self.grid.addWidget(self.loadScanParametersButton, currentRow, 3)
         self.grid.addWidget(self.setBusyFalseButton, currentRow, 4)
 
-    def initParamFields(self, parameters: dict):
+    def initParamFields(self, parameters: dict, params_exclude: list):
         """ Initialized event-triggered analysis pipeline parameter fields. """
         # remove previous parameter fields for the previously loaded pipeline
         for param in self.param_names:
@@ -165,7 +136,7 @@ class EtSTEDWidget(QtWidgets.QWidget):
         self.param_names = list()
         self.param_edits = list()
         for pipeline_param_name, pipeline_param_val in parameters.items():
-            if pipeline_param_name not in self.__paramsExclude:
+            if pipeline_param_name not in params_exclude:
                 # create param for input
                 param_name = QtGui.QLabel('{}'.format(pipeline_param_name))
                 param_value = pipeline_param_val.default if pipeline_param_val.default is not pipeline_param_val.empty else 0
@@ -178,6 +149,24 @@ class EtSTEDWidget(QtWidgets.QWidget):
                 self.param_edits.append(param_edit)
 
                 currentRow += 1
+
+    def setAnalysisPipelines(self, analysisDir):
+        """ Set combobox with available analysis pipelines to use. """
+        for pipeline in os.listdir(analysisDir):
+            if os.path.isfile(os.path.join(analysisDir, pipeline)):
+                pipeline = pipeline.split('.')[0]
+                self.analysisPipelines.append(pipeline)
+        self.analysisPipelinePar.addItems(self.analysisPipelines)
+        self.analysisPipelinePar.setCurrentIndex(0)
+
+    def setTransformations(self, transformDir):
+        """ Set combobox with available coordinate transformations to use. """
+        for transform in os.listdir(transformDir):
+            if os.path.isfile(os.path.join(transformDir, transform)):
+                transform = transform.split('.')[0]
+                self.transformPipelines.append(transform)
+        self.transformPipelinePar.addItems(self.transformPipelines)
+        self.transformPipelinePar.setCurrentIndex(0)
 
     def setFastDetectorList(self, detectorNames):
         """ Set combobox with available detectors to use for the fast method. """
