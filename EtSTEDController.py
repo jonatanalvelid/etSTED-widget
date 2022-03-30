@@ -3,6 +3,7 @@ import glob
 import sys
 import importlib
 import enum
+import warnings
 from collections import deque
 from datetime import datetime
 from inspect import signature
@@ -13,6 +14,8 @@ import scipy.ndimage as ndi
 import numpy as np
 from scipy.optimize import least_squares
 from PyQt5.QtCore import QObject, QThread, QTimer, pyqtSignal
+
+warnings.filterwarnings("ignore")
 
 # folder path for saved log files
 _logsDir = os.path.join('C:\\etSTED', 'recordings', 'logs_etsted')
@@ -72,6 +75,7 @@ class EtSTEDController():
 
         # initiate log for each detected event
         self.resetDetLog()
+        self.resetRunParams()
         self.getScanParameters()  # mock: to avoid having to manually press the button
         # initiate other parameters and flags used during experiments
         self.initiateFlagsParams()
@@ -334,13 +338,13 @@ class EtSTEDController():
             # run pipeline
             if self.__runMode == RunMode.TestVisualize or self.__runMode == RunMode.TestValidate:
                 # if chosen a test mode: run pipeline with analysis image return
-                coords_detected, self.__exinfo, img_ana = self.pipeline(img, self.__bkg, self.__binary_mask,
+                coords_detected, self.__exinfo, img_ana = self.pipeline(img, self.__prevFrames, self.__binary_mask,
                                                                         (self.__runMode==RunMode.TestVisualize or
                                                                         self.__runMode==RunMode.TestValidate),
                                                                         self.__exinfo, *self.__param_vals)
             else:
                 # if chosen experiment mode: run pipeline without analysis image return
-                coords_detected, self.__exinfo = self.pipeline(img, self.__bkg, self.__binary_mask,
+                coords_detected, self.__exinfo = self.pipeline(img, self.__prevFrames, self.__binary_mask,
                                                                self.__runMode==RunMode.TestVisualize,
                                                                self.__exinfo, *self.__param_vals)
             self.setDetLogLine("pipeline_end", datetime.now().strftime('%Ss%fus'))
@@ -484,8 +488,10 @@ class EtSTEDController():
             # turn off fast laser xxx.lasersManager.laserFast.setEnabled(False)
             self.__running = False
 
-    def closeEvent(self):
-        pass
+    def closeEvent(self, *args):
+        print('what')
+        #self.camImgWorker.
+        self.camImgThread.quit()
 
 
 class EtSTEDCoordTransformHelper():

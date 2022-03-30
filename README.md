@@ -12,14 +12,13 @@ The version [etSTED-widget-base](https://github.com/jonatanalvelid/etSTED-widget
 [ImSwitch](https://github.com/kasasxav/ImSwitch) has the etSTED widget integrated, and can be used as a solution for microscope control and event-triggered imaging. 
 
 ## Installation
-To run the etSTED-widget as a standalone widget, or to implement it in your own microscope control software, install the dependencies by running the following commands in either conda or pip from the source repository and in case of the pip-version in the virtual environment of choice. Python 3.9 or later is tested and recommended. 
-```
-conda env create -f environment.yml
-```
+To run the etSTED-widget as a standalone widget, or to implement it in your own microscope control software, install the dependencies by running the following command in pip from the source repository and in the virtual environment of choice. Python 3.7 or later is tested and recommended. 
 
 ```
 pip install -r requirements.txt
 ```
+
+GPU-versions of detection pipelines (see below) additionally requires ```cupy``` to be installed. Follow installation instructions for the specific CUDA-version of your GPU. 
 
 ## Detection pipelines
 Detection pipelines are the basis of the event-triggered method, and new ones can easily be added by creating a .py file with an analysis function of the same name. This function should as a basis take the following five arguments:

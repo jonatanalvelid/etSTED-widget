@@ -4,12 +4,14 @@ from mockcamera import MockCamera
 from PyQt5 import QtWidgets
 import sys
 
-setupInfo = None
+_setupInfo = None
 
-etSTEDapp = QtWidgets.QApplication(sys.argv)
-camera = MockCamera()
-widget = EtSTEDWidget()
-controller = EtSTEDController(camera, setupInfo, widget)
 
-widget.show()
-sys.exit(etSTEDapp.exec_())
+if __name__ == "__main__":
+    etSTEDapp = QtWidgets.QApplication(sys.argv)
+    camera = MockCamera()
+    widget = EtSTEDWidget()
+    controller = EtSTEDController(camera, _setupInfo, widget)
+    widget.show()
+
+    sys.exit(etSTEDapp.exec_())

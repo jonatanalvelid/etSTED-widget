@@ -1,5 +1,5 @@
 h5py
-napari
+napari[pyqt5] == 0.4.7  # pinned because of napari issue 2897
 numpy
 PyQt5 >= 5
 pyqtgraph
