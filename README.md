@@ -20,6 +20,8 @@ pip install -r requirements.txt
 
 GPU-versions of detection pipelines (see below) additionally requires ```cupy``` to be installed. Follow installation instructions for the specific CUDA-version of your GPU. 
 
+Certain analysis pipelines may require additional packages to be installed, see respective pipeline for the full list of dependencies. For the provided pipelines, the additional dependencies are as follows: dynamin_rise - trackpy, pandas; vesicle_proximity - trackpy, pandas
+
 ## Detection pipelines
 Detection pipelines are the basis of the event-triggered method, and new ones can easily be added by creating a .py file with an analysis function of the same name. This function should as a basis take the following five arguments:
 | Arguments      | Description | Default value |

@@ -86,7 +86,6 @@ class EtSTEDController():
         self.__runMode = RunMode.Experiment  # run mode currently used
         self.__validating = False  # validation flag
         self.__busy = False  # running pipeline busy flag
-        self.__bkg = None  # bkg image
         self.__prevFrames = deque(maxlen=10)  # deque for previous fast frames
         self.__prevAnaFrames = deque(maxlen=10)  # deque for previous preprocessed analysis frames
         self.__binary_mask = None  # binary mask of regions of interest, used by certain pipelines, leave None to consider the whole image
@@ -423,10 +422,8 @@ class EtSTEDController():
                     # buffer latest fast frame and save validation images
                     self.__prevFrames.append(img)
                     self.saveValidationImages(prev=True, prev_ana=False)
-                    self.__busy = False
+                    self.setBusyFalse()
                     return
-            # use latest fast frame as background for next pipeline run
-            self.__bkg = img
             # buffer latest fast frame and save validation images
             self.__prevFrames.append(img)
             if self.__runMode == RunMode.TestValidate:
