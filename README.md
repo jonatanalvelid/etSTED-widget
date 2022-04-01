@@ -27,10 +27,11 @@ Certain analysis pipelines may require additional packages to be installed, see 
 Mock etSTED experiments can be performed with the simulated camera and image viewer provided in in the widget. The mock camera generates noisy images with occasional intensity spikes. The following steps can be followed to initiate a mock experiment, taking 1-3 min to set up and run:
 
 1. Record a binary mask containing a selection of pixels with the default binary threshold by pressing ```Record binary mask```. 
-4. Load a CPU-version of the rapid_signal_spikes detection pipeline by choosing it in the dropdown menu and pressing ```Load pipeline```. 
-5. Check experiment mode from the dropdown menu to ```TestVisualize``` in order to run the mock experiment while showing the preprocessed images in real-time in the pop-out help widget.
-6. Run mock experiment by pressing ```Initiate```.
-7. The real-time white circles on the image in the image viewer shows detected events and spots where the STED scanning would have taken place. The mock camera returns an image with at most 1 peak at the same time, and as such at most 1 detected event will be displayed at the same time.
+2. Load a CPU-version of the ```rapid_signal_spikes_cpu``` detection pipeline by choosing it in the dropdown menu and pressing ```Load pipeline```. 
+3. Change to the pre-calibrated coordinate transformation ```wf_800_scan_80```.
+4. Change experiment mode from the dropdown menu to ```TestVisualize``` in order to run the mock experiment while showing the preprocessed images in real-time in the pop-out help widget.
+5. Run mock experiment by pressing ```Initiate```.
+6. The real-time white circles on the image in the image viewer shows detected events and spots where the STED scanning would have taken place. The mock camera returns an image with at most 1 peak at the same time, and as such at most 1 detected event will be displayed at the same time.
 
 If the widget softlocks due to not following the steps above or for other reasons, press the ```Unlock softlock``` button. 
 
