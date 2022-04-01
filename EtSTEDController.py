@@ -19,8 +19,6 @@ warnings.filterwarnings("ignore")
 
 # folder path for saved log files
 _logsDir = os.path.join('C:\\etSTED', 'recordings', 'logs_etsted')
-# folder path for pipelines and coordinate transformation files
-_etstedDir = os.path.join('C:\\etSTED', 'imcontrol_etsted')
 
 
 class EtSTEDController():
@@ -35,11 +33,11 @@ class EtSTEDController():
         self.camera = camera
 
         # folders for analysis pipelines and transformations
-        self.analysisDir = os.path.join(_etstedDir, 'analysis_pipelines')
+        self.analysisDir = os.path.join('analysis_pipelines')
         if not os.path.exists(self.analysisDir):
             os.makedirs(self.analysisDir)
         sys.path.append(self.analysisDir)
-        self.transformDir = os.path.join(_etstedDir, 'transform_pipelines')
+        self.transformDir = os.path.join('transform_pipelines')
         if not os.path.exists(self.transformDir):
             os.makedirs(self.transformDir)
         sys.path.append(self.transformDir)
@@ -47,10 +45,10 @@ class EtSTEDController():
         self._widget.setAnalysisPipelines(self.analysisDir)
         self._widget.setTransformations(self.transformDir)
 
-        self.detectorList = ['MockCamera']
+        self.detectorList = ['MockCamera']  # mock, get detector list from elsewhere in software
         self._widget.setFastDetectorList(self.detectorList)
 
-        self.laserList = ['WFLaser','ExcLaser','STEDLaser']
+        self.laserList = ['WFLaser','ExcLaser','STEDLaser']  # mock, get laser list from elsewhere in software
         self._widget.setFastLaserList(self.laserList)
 
         # create a helper controller for the coordinate transform pop-out widget
@@ -93,7 +91,7 @@ class EtSTEDController():
         self.__init_frames = 5  # number of frames after initiating etSTED before a trigger can occur, to allow laser power settling etc
         self.__validation_frames = 5  # number of fast frames to record after detecting an event in validation mode
         self.t_call = 0
-        self.__params_exclude = ['img', 'bkg', 'binary_mask', 'exinfo', 'testmode']  # excluded pipeline parameters when loading param fields
+        self.__params_exclude = ['img', 'prev_frames', 'binary_mask', 'exinfo', 'testmode']  # excluded pipeline parameters when loading param fields
 
     def initiate(self):
         """ Initiate or stop an etSTED experiment. """
@@ -569,7 +567,6 @@ class EtSTEDCoordTransformHelper():
         with h5py.File(img_filename, "r") as f:
             img_key = list(f.keys())[0]
             pixelsize = f.attrs['element_size_um'][1]
-            print(pixelsize)
             img_data = np.array(f[img_key])
             imgsize = pixelsize*np.size(img_data,0)
         # view data in corresponding viewbox

@@ -3,7 +3,7 @@ import scipy.ndimage as ndi
 import cv2
 from scipy.spatial import cKDTree, distance
 
-def bapta_calcium_spikes_cpu(img, bkg=None, binary_mask=None, testmode=False, exinfo=None,
+def bapta_calcium_spikes_cpu(img, prev_frames=None, binary_mask=None, testmode=False, exinfo=None,
                              min_dist=30, thresh_abs=0.2, num_peaks=10, noise_level=1,
                              smoothing_radius=2, ensure_spacing=1, border_limit=10,
                              init_smooth=0):
@@ -25,23 +25,26 @@ def bapta_calcium_spikes_cpu(img, bkg=None, binary_mask=None, testmode=False, ex
     border_limit - how much of the border to remove peaks from in pixels
     """   
 
+    if len(prev_frames)>0:                 
+        prev_frame = np.array(prev_frames)[-1]
+
     f_multiply = 1e3
     if binary_mask is None:
         print('Bin mask not provided')
         binary_mask = np.ones(np.shape(img))
-    if bkg is None:
+    if prev_frames is None:
         print('You have to provide a background image for this pipeline!')
         img_ana = np.zeros(np.shape(img))
     else:
         if init_smooth==1:
             img = ndi.filters.gaussian_filter(img.astype('float32'), 2*smoothing_radius)
-            bkg = ndi.filters.gaussian_filter(bkg.astype('float32'), 2*smoothing_radius)
+            prev_frame = ndi.filters.gaussian_filter(prev_frame.astype('float32'), 2*smoothing_radius)
         
         # subtract last img
-        img_ana = np.subtract(img, bkg)
+        img_ana = np.subtract(img, prev_frame)
 
         # divide by last image to get percentual change in img
-        img_div = bkg
+        img_div = prev_frame
         # replace noise in bkg with a very high value to avoid detecting noise
         img_div[img_div < noise_level] = 100000
         img_ana = np.true_divide(img_ana, img_div)
