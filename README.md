@@ -17,9 +17,27 @@ To run the etSTED-widget as a standalone widget, or to implement it in your own 
 pip install -r requirements.txt
 ```
 
-GPU-versions of detection pipelines (see below) additionally requires ```cupy``` to be installed. Follow installation instructions for the specific CUDA-version of your GPU. 
+Prepare the etSTED-widget by downloading or forking the code, and to start it by running the ``` __main__.py ``` file.
+
+In order to run the GPU-boosted analysis pipelines in real etSTED experiments, CUDA Toolkit has additionally to be installed on the machine, together with the cupy package in the same environment. See instructions at https://docs.cupy.dev/en/stable/install.html. 
 
 Certain analysis pipelines may require additional packages to be installed, see respective pipeline for the full list of dependencies. For the provided pipelines, the additional dependencies are as follows: dynamin_rise - trackpy, pandas; vesicle_proximity - trackpy, pandas
+
+## Demo - mock etSTED experiment
+Mock etSTED experiments can be performed with the simulated camera and image viewer provided in in the widget. The mock camera generates noisy images with occasional intensity spikes. The following steps can be followed to initiate a mock experiment, taking 1-3 min to set up and run:
+
+1. Record a binary mask containing a selection of pixels with the default binary threshold by pressing ```Record binary mask```. 
+4. Load a CPU-version of the rapid_signal_spikes detection pipeline by choosing it in the dropdown menu and pressing ```Load pipeline```. 
+5. Check experiment mode from the dropdown menu to ```TestVisualize``` in order to run the mock experiment while showing the preprocessed images in real-time in the pop-out help widget.
+6. Run mock experiment by pressing ```Initiate```.
+7. The real-time white circles on the image in the image viewer shows detected events and spots where the STED scanning would have taken place. The mock camera returns an image with at most 1 peak at the same time, and as such at most 1 detected event will be displayed at the same time.
+
+If the widget softlocks due to not following the steps above or for other reasons, press the ```Unlock softlock``` button. 
+
+The main version of [ImSwitch](https://github.com/kasasxav/ImSwitch) is capable of running in full simulation mode, and using the provided etsted_sim.json setup configuration, a basic experimental setup for event-triggered imaging experiments can be tested. Follow the same instructions as in the repository of the separate version of ImSwitch provided at [ImSwitch-etSTED](https://github.com/jonatanalvelid/ImSwitch-etSTED) for testing it out.
+
+## Running etSTED experiments
+For real etSTED experiments, the widget requires an implementation in a complete microscope control software. Follow the instructions at the [ImSwitch repository](https://github.com/kasasxav/ImSwitch) to find and run a full microscope control software with etSTED implemented, also capable of running in full simulation mode. In order to run etSTED experiments, use at least one camera for the fast method, one laser for the fast method, one laser for the scanning method, and one point-detector for the scanning method. 
 
 ## Detection pipelines
 Detection pipelines are the basis of the event-triggered method, and new ones can easily be added by creating a .py file with an analysis function of the same name. This function should as a basis take the following five arguments:
